@@ -16,6 +16,7 @@ class Syllable:
         return self.get_transliteration('ipa')
 
     def get_tone(self):
+        # Tone class is determined by the first initial consonant character (even when 'ຫ' modifies following consonant).
         first_letter = self.initial_consonant[0] if self.initial_consonant is not None else None
         self.letter_class = Syllable.get_letter_class(first_letter)
         self.dead_syllable = self.final_consonant in {"ກ","ດ","ບ"} or (self.final_consonant is None and self.vowel_length == 'short')
@@ -91,7 +92,6 @@ class Syllable:
 # https://laoconverter.info/moh2020.html
 lao_consonant_assignments = {
     # cons: [ipa sound list [beginning sound, final sound], ... other sound lists in same format]
-    #TODO: Add MoH
     'ບ': [['b', 'p'], ['b', 'p']], 
     'ດ': [['d', 't'], ['d', 't']], 
     'ຝ': [['f', None], ['f', None]], 
@@ -267,13 +267,15 @@ def lao2ipa(lao_source: str, output: str = 'ipa', ignore_tones: bool = False, re
         lao_array = absorb_initial_consonants_into_syllables(lao_array)
         lao_array = absorb_tones_into_syllables(lao_array)
         lao_array = absorb_final_consonants_into_syllables(lao_array)
+        # Handle repeater character logic while objects are grouped by Syllable.
+        # If Syllable objects are present, duplicate the previous Syllable when 'ໆ' appears.
+        # If no Syllable objects are present (non-syllable processing), simply remove 'ໆ' for now.
+        lao_array = handle_repeater_on_syllables(lao_array)
         lao_array = transliterate_syllables(lao_array, output)
     # Iterate through string and replace valid syllables with ipa
     # Rule-based convert remaining characters
     # Process special characters
     transliterated_array = transliterate(lao_array, output)
-    #TODO: Add repeater handling    
-    # Convert back to string
     return "".join(transliterated_array)
 
 def remove_tone_markers(lao_array: list):
@@ -475,15 +477,15 @@ def transliterate_syllables(lao_array, output):
 def transliterate(lao_array: list, output: str = 'ipa'):
     output_index = outputs[output]
     result_array = []
-    index = 0
-    for segment in lao_array:
+    for index, segment in enumerate(lao_array):
         if segment is None:
             continue
         to_append = ""
-        if segment in lao_characters:
+        # explicit string handling
+        if isinstance(segment, str) and segment in lao_characters:
+            # vowel handling first
             if segment in lao_vowel_assignments:
-                if segment == "ອ" or segment == "ວ":
-                    index = lao_array.index(segment)
+                if segment in {"ອ","ວ"}:
                     try:
                         if lao_array[index - 1] in lao_consonant_assignments and lao_array[index + 1] in lao_consonant_assignments:
                             to_append = lao_vowel_assignments[segment][output_index]
@@ -491,36 +493,76 @@ def transliterate(lao_array: list, output: str = 'ipa'):
                         pass
                 else:
                     to_append = lao_vowel_assignments[segment][output_index]
+            # consonant handling
             if to_append == "" and segment in lao_consonant_assignments:
-                if (index + 1 < len(lao_array) and lao_array[index + 1] in lao_vowel_assignments) or lao_consonant_assignments[segment][output_index][1] is None:
-                    to_append = lao_consonant_assignments[segment][output_index][0]
+                cons_entry = lao_consonant_assignments[segment][output_index]
+                # if vowel follows or there is no distinct final form, use initial form, otherwise use final form
+                if (index + 1 < len(lao_array) and lao_array[index + 1] in lao_vowel_assignments) or cons_entry[1] is None:
+                    to_append = cons_entry[0]
                 else:
-                    to_append = lao_consonant_assignments[segment][output_index][1]
-        # The first character is a consonant
-        elif segment[0] in lao_consonant_assignments:
+                    to_append = cons_entry[1]
+        # fallback: segment may be a multi-char string not listed in lao_characters (e.g., unexpected combos)
+        elif isinstance(segment, str) and len(segment) > 0 and segment[0] in lao_consonant_assignments:
             result_string = ""
             for character in segment:
-                result_string += lao_consonant_assignments[character][output_index][0]
+                if character in lao_consonant_assignments:
+                    result_string += lao_consonant_assignments[character][output_index][0]
+                else:
+                    result_string += character
             to_append = result_string
-        # The first character is a vowel
-        elif segment[0] in lao_vowel_assignments:
+        elif isinstance(segment, str) and len(segment) > 0 and segment[0] in lao_vowel_assignments:
             result_string = ""
             for character in segment:
-                result_string += lao_vowel_assignments[character][output_index]
+                if character in lao_vowel_assignments:
+                    result_string += lao_vowel_assignments[character][output_index]
+                else:
+                    result_string += character
             to_append = result_string
         else:
             to_append = process_special_characters(segment)
         result_array.append(to_append)
-        index += 1
     return result_array
 
 def process_special_characters(char):
+    # Lao abbreviation sign (U+0EF1) -> remove
     if char == "ຯ":
         return ''
     elif char in lao_numbers:
         return lao_numbers[char]
     else:
         return char
+
+def handle_repeater_on_syllables(lao_array: list, repeater_char: str = 'ໆ'):
+    """
+    When the lao_array contains Syllable objects, duplicate the previous Syllable object
+    wherever the Lao iteration mark 'ໆ' appears. If no previous Syllable exists at a
+    repeater position, the repeater is simply removed.
+
+    NOTE: Non-syllable repeater handling (when the pipeline has already flattened to
+    strings) is currently a noop (repeater removed). Fixing repeater behavior after
+    syllable flattening is TODO.
+    """
+    result = []
+    saw_syllable = False
+    for item in lao_array:
+        if item == repeater_char:
+            if saw_syllable and result:
+                prev = result[-1]
+                if isinstance(prev, Syllable):
+                    # duplicate by creating a fresh Syllable with same components
+                    dup = Syllable(vowel=prev.vowel, initial_consonant=prev.initial_consonant, final_consonant=prev.final_consonant, tone_marker=prev.tone_marker)
+                    result.append(dup)
+                else:
+                    # previous not a Syllable — ignore repeater for now
+                    pass
+            else:
+                # nothing to repeat, drop the repeater
+                pass
+        else:
+            result.append(item)
+            if isinstance(item, Syllable):
+                saw_syllable = True
+    return result
 
 def remove_karan(array: list, remove_karan_phonemes: bool):
     result_array = []
