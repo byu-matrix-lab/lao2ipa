@@ -20,34 +20,35 @@ class Syllable:
         first_letter = self.initial_consonant[0] if self.initial_consonant is not None else None
         self.letter_class = Syllable.get_letter_class(first_letter)
         self.dead_syllable = self.final_consonant in {"ກ","ດ","ບ"} or (self.final_consonant is None and self.vowel_length == 'short')
+        # Tone mappings adjusted to match Wiktionary (Vientiane) IPA contours.
         tone_mapping_thoo = {
-            # letter class: tone
-            'high': "˧˩",
-            'middle': "˦˥",
-            'low': "˦˩",
+            # letter class: tone (for marker "້")
+            'high': "˥˩",
+            'middle': "˧˥",
+            'low': "˥˨",
             None: None
         }
         tone_mapping_live = {
-            # letter class: tone
-            'high': "˨˦",
-            'middle': "˨˦",
-            'low': "˦˥",
+            # letter class: tone for live (smooth) syllables
+            'high': "˩˧",
+            'middle': "˩˧",
+            'low': "˧˥",
             None: None
         }
         tone_mapping_dead = {
-            # (letter class, vowel length): tone
-            ('high','long'): "˧˩",
-            ('middle','long'): "˧˩",
-            ('low','long'): "˦˩",
-            ('high','short'): "˦˥",
-            ('middle','short'): "˦˥",
-            ('low','short'): "˥",
+            # (letter class, vowel length): tone for checked (dead) syllables
+            ('high','long'): "˥˩",
+            ('middle','long'): "˥˩",
+            ('low','long'): "˥˨",
+            ('high','short'): "˧˥",
+            ('middle','short'): "˧˥",
+            ('low','short'): "˧",
         }
         tone = ""
         if self.tone_marker == "໋":
-            tone = "˨˦"
+            tone = "˩˧"
         elif self.tone_marker == "໊":
-            tone = "˦˥"
+            tone = "˧˥"
         elif self.tone_marker == "່":
             tone = "˧"
         elif self.tone_marker == "້":
@@ -59,12 +60,32 @@ class Syllable:
         return tone if tone is not None else ""
 
     def get_transliteration(self, system):
-        transliterated_list = transliterate([self.initial_consonant], system)
-        if self.vowel in {"ອ","ວ"}:
-            transliterated_list.extend(lao_vowel_assignments[self.vowel][outputs[system]])
-        else:
-            transliterated_list.extend(transliterate([self.vowel], system))
-        transliterated_list.extend(transliterate([self.final_consonant], system))
+        transliterated_list = []
+        # Prefer explicit initial-form mapping for initial consonants so we don't
+        # accidentally select final-form mapping when transliterate() is called
+        # with a single-element context.
+        if self.initial_consonant is not None:
+            try:
+                initial_cons_entry = lao_consonant_assignments[self.initial_consonant][outputs[system]]
+                transliterated_list.append(initial_cons_entry[0])
+            except KeyError:
+                transliterated_list.extend(transliterate([self.initial_consonant], system))
+
+        # Vowel handling: when using direct table lookup append the string,
+        # otherwise extend the transliterate() result (a list).
+        if self.vowel is not None:
+            try:
+                vowel_entry = lao_vowel_assignments[self.vowel][outputs[system]]
+                transliterated_list.append(vowel_entry)
+            except KeyError:
+                transliterated_list.extend(transliterate([self.vowel], system))
+
+        if self.final_consonant is not None:
+            try:
+                final_cons_entry = lao_consonant_assignments[self.final_consonant][outputs[system]]
+                transliterated_list.append(final_cons_entry[1] if final_cons_entry[1] is not None else final_cons_entry[0])
+            except KeyError:
+                transliterated_list.extend(transliterate([self.final_consonant], system))
         transliterated_list.append(self.get_tone())
         return "".join(transliterated_list)
 
@@ -130,27 +151,27 @@ lao_consonant_assignments = {
     'ຫວ': [['w', None], ['v', None]], 
     'ອ': [['ʔ', None], ['', None]], 
     'ຼ': [['l', None], ['l', None]], 
-    'ຄຣ': [['kʰl', None], ['khr', None]], 
+    'ຄຣ': [['kʰr', None], ['khr', None]], 
     'ຄລ': [['kʰl', None], ['khl', None]], 
     'ຄວ': [['kʰw', None], ['khw', None]], 
     'ຖວ': [['taw', None], ['thw', None]], 
-    'ຟຣ': [['fl', None], ['fr', None]], 
+    'ຟຣ': [['fr', None], ['fr', None]], 
     'ຟຼ': [['fl', None], ['fl', None]], 
-    'ຝຣ': [['fal', None], ['fr', None]], 
-    'ຝຮ': [['fal', None], ['fr', None]], 
+    'ຝຣ': [['far', None], ['fr', None]], 
+    'ຝຮ': [['far', None], ['fr', None]], 
     'ຝຼ': [['fal', None], ['fl', None]], 
-    'ພຣ': [['pʰl', None], ['phr', None]], 
+    'ພຣ': [['pʰr', None], ['phr', None]], 
     'ພລ': [['pʰl', None], ['phl', None]], 
     'ພຼ': [['pʰl', None], ['phl', None]], 
     'ຂວ': [ ['kʰw', None], ['khw', None]], 
     'ກວ': [['kw', None], ['kw', None]], 
-    'ກຣ': [['kl', None], ['kr', None]], 
+    'ກຣ': [['kr', None], ['kr', None]], 
     'ກຮ': [['kr', None], ['kr', None]], 
     'ກຼ': [['kl', None], ['kl', None]], 
     'ຄຼ': [['kʰl', None], ['khl', None]], 
     'ປຼ': [['pl', None], ['pl', None]], 
-    'ປຣ': [['pl', None], ['pr', None]], 
-    'ບຣ': [['bl', None], ['br', None]], 
+    'ປຣ': [['pr', None], ['pr', None]], 
+    'ບຣ': [['br', None], ['br', None]], 
     'ບລ': [['bl', None], ['bl', None]], 
     'ບຼ': [['bl', None], ['bl', None]], 
     'ດຼ': [['dr', None], ['dl', None]], 
@@ -192,11 +213,11 @@ lao_vowel_assignments = {
     "ເີ": ["ɤː","eu"],
     "ເຍ": ["ia","ia"],
     "ຽ": ["ia", "ia"],
-    "ົວ": ["ua","oua"],
-    "ົວະ": ["ua","oua"],
-    "ວ": ["ua","oua"],
-    "ເຶອ": ["ɯa","ua"],
-    "ເືອ": ["ɯa","ua"],
+    "ົວ": ["uːə̯","oua"],
+    "ົວະ": ["uə̯","oua"],
+    "ວ": ["uːə̯","oua"],
+    "ເຶອ": ["ɯə̯","ua"],
+    "ເືອ": ["ɯːə̯","ua"],
     "ໃ": ["aj","ai"],
     "ໄ": ["aj","ai"],
     "ເົາ": ["aw","ao"],
