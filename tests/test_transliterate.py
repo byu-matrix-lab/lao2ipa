@@ -66,7 +66,7 @@ def test_authoritative_ipa_vectors_from_wiktionary():
     expected = {
         'ສະບາຍດີ': 'sa(ʔ˧˥).baːj˩(˧).diː˩(˧)',
         'ໄມ້': 'maj˥˨',
-        'ເມືອງ': 'mɯːə̯ŋ˧˥',
+        'ເມືອງ': 'mɯːəŋ˧˥',
         'ສີ': 'siː˩(˧)',
         'ຍິງ': 'ɲiŋ˧˥',
         'ບໍ່': 'bɔː˧',
@@ -75,7 +75,7 @@ def test_authoritative_ipa_vectors_from_wiktionary():
         'ເຮັດ': 'het˧',
         'ຊາ': 'saː˧˥',
         'ພຣະ': 'pʰraʔ˧',
-        'ຄວາມ': 'kʰuːə̯m˧˥',
+        'ຄວາມ': 'kʰuːəm˧˥',
         'ກາ': 'kaː˩(˧)',
         'ຮູບ': 'huːp˥˨',
         'ຫວັງ': 'ʋaŋ˩(˧)',

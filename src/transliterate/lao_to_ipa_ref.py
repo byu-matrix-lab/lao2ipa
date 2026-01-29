@@ -65,6 +65,11 @@ class Syllable:
         # accidentally select final-form mapping when transliterate() is called
         # with a single-element context.
         if self.initial_consonant is not None:
+            # If the initial cluster ends with the semivowel 'ວ' and the
+            # vowel is plain 'າ', merge the 'ວ' semivowel into the vowel instead
+            if isinstance(self.initial_consonant, str) and len(self.initial_consonant) > 1 and self.initial_consonant[-1] == 'ວ'  and self.vowel == 'າ':
+                self.initial_consonant = self.initial_consonant.rstrip('ວ')
+                self.vowel = 'ວາ'
             try:
                 initial_cons_entry = lao_consonant_assignments[self.initial_consonant][outputs[system]]
                 transliterated_list.append(initial_cons_entry[0])
@@ -147,14 +152,14 @@ lao_consonant_assignments = {
     'ຖ': [['tʰ', None], ['th', None]], 
     'ທ': [['tʰ', None], ['th', None]], 
     'ຈ': [['tɕ', None], ['ch', None]], 
-    'ວ': [['w', None], ['v', 'o']], 
-    'ຫວ': [['w', None], ['v', None]], 
+    'ວ': [['ʋ', None], ['v', 'o']], 
+    'ຫວ': [['ʋ', None], ['v', None]], 
     'ອ': [['ʔ', None], ['', None]], 
     'ຼ': [['l', None], ['l', None]], 
     'ຄຣ': [['kʰr', None], ['khr', None]], 
     'ຄລ': [['kʰl', None], ['khl', None]], 
-    'ຄວ': [['kʰw', None], ['khw', None]], 
-    'ຖວ': [['taw', None], ['thw', None]], 
+    'ຄວ': [['kʰʋ', None], ['khv', None]], 
+    'ຖວ': [['taʋ', None], ['thv', None]], 
     'ຟຣ': [['fr', None], ['fr', None]], 
     'ຟຼ': [['fl', None], ['fl', None]], 
     'ຝຣ': [['far', None], ['fr', None]], 
@@ -163,8 +168,8 @@ lao_consonant_assignments = {
     'ພຣ': [['pʰr', None], ['phr', None]], 
     'ພລ': [['pʰl', None], ['phl', None]], 
     'ພຼ': [['pʰl', None], ['phl', None]], 
-    'ຂວ': [ ['kʰw', None], ['khw', None]], 
-    'ກວ': [['kw', None], ['kw', None]], 
+    'ຂວ': [ ['kʰʋ', None], ['khv', None]], 
+    'ກວ': [['kʋ', None], ['kv', None]], 
     'ກຣ': [['kr', None], ['kr', None]], 
     'ກຮ': [['kr', None], ['kr', None]], 
     'ກຼ': [['kl', None], ['kl', None]], 
@@ -213,16 +218,16 @@ lao_vowel_assignments = {
     "ເີ": ["ɤː","eu"],
     "ເຍ": ["ia","ia"],
     "ຽ": ["ia", "ia"],
-    "ົວ": ["uːə̯","oua"],
-    "ົວະ": ["uə̯","oua"],
-    "ວ": ["uːə̯","oua"],
-    "ເຶອ": ["ɯə̯","ua"],
-    "ເືອ": ["ɯːə̯","ua"],
+    "ົວ": ["uːə","oua"],
+    "ົວະ": ["uə","oua"],
+    "ວ": ["uːə","oua"],
+    "ເຶອ": ["ɯə","ua"],
+    "ເືອ": ["ɯːə","ua"],
     "ໃ": ["aj","ai"],
     "ໄ": ["aj","ai"],
     "ເົາ": ["aw","ao"],
-#    "ວາ": ["uːə̯"], Remove altogether?
-    "ເັຽ": ["iːə̯", "ia"],
+   "ວາ": ["uːə","oua"],
+    "ເັຽ": ["iːə", "ia"],
     "ຳ": ["am", "am"],
 }
 
