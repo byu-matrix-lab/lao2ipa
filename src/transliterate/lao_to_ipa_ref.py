@@ -1,5 +1,8 @@
+#TODO: Add module docstring, abbreviations like 'ກມ','kɔː˩(˧).mɔː˧˥'
 
 class Syllable:
+    LAO_SPECIAL_VOWELS = {'ຳ','ເົາ','ໃ','ໄ'}
+
     def __init__(self, vowel, initial_consonant=None, final_consonant=None, tone_marker=None):
         self.vowel = vowel
         self.initial_consonant = initial_consonant
@@ -7,7 +10,8 @@ class Syllable:
         self.tone_marker = tone_marker
         self.letter_class = None
         self.vowel_length = Syllable.get_vowel_length(vowel)
-        self.dead_syllable = self.final_consonant in {"ກ","ດ","ບ"} or (self.final_consonant is None and self.vowel_length == 'short')
+        # Treat certain special vowels (am/ao/ai) as live for tone purposes
+        self.dead_syllable = self.final_consonant in {"ກ","ດ","ບ"} or (self.final_consonant is None and self.vowel_length == 'short' and vowel not in Syllable.LAO_SPECIAL_VOWELS)
 
     def __str__(self):
         return self.get_transliteration('ipa')
@@ -15,16 +19,18 @@ class Syllable:
     def __repr__(self):
         return self.get_transliteration('ipa')
 
+    # Reference: https://seasite.niu.edu/lao/LaoLanguage/IntroAlphabet/tonemarks/tonechart.htm
     def get_tone(self):
         # Tone class is determined by the first initial consonant character (even when 'ຫ' modifies following consonant).
         first_letter = self.initial_consonant[0] if self.initial_consonant is not None else None
         self.letter_class = Syllable.get_letter_class(first_letter)
-        self.dead_syllable = self.final_consonant in {"ກ","ດ","ບ"} or (self.final_consonant is None and self.vowel_length == 'short')
+        # Recompute dead_syllable taking into account special vowels as live
+        self.dead_syllable = self.final_consonant in {"ກ","ດ","ບ"} or (self.final_consonant is None and self.vowel_length == 'short' and self.vowel not in Syllable.LAO_SPECIAL_VOWELS)
         # Tone mappings adjusted to match Wiktionary (Vientiane) IPA contours.
         tone_mapping_thoo = {
             # letter class: tone (for marker "້")
-            'high': "˥˩",
-            'middle': "˧˥",
+            'high': "˧˩",
+            'middle': "˥˨",
             'low': "˥˨",
             None: None
         }
@@ -37,8 +43,8 @@ class Syllable:
         }
         tone_mapping_dead = {
             # (letter class, vowel length): tone for checked (dead) syllables
-            ('high','long'): "˥˩",
-            ('middle','long'): "˥˩",
+            ('high','long'): "˧˩",
+            ('middle','long'): "˧˩",
             ('low','long'): "˥˨",
             ('high','short'): "˧˥",
             ('middle','short'): "˧˥",
@@ -67,9 +73,9 @@ class Syllable:
         if self.initial_consonant is not None:
             # If the initial cluster ends with the semivowel 'ວ' and the
             # vowel is plain 'າ', merge the 'ວ' semivowel into the vowel instead
-            if isinstance(self.initial_consonant, str) and len(self.initial_consonant) > 1 and self.initial_consonant[-1] == 'ວ'  and self.vowel == 'າ':
-                self.initial_consonant = self.initial_consonant.rstrip('ວ')
-                self.vowel = 'ວາ'
+            # if isinstance(self.initial_consonant, str) and len(self.initial_consonant) > 1 and self.initial_consonant[-1] == 'ວ'  and self.vowel == 'າ':
+            #     self.initial_consonant = self.initial_consonant.rstrip('ວ')
+            #     self.vowel = 'ວາ'
             try:
                 initial_cons_entry = lao_consonant_assignments[self.initial_consonant][outputs[system]]
                 transliterated_list.append(initial_cons_entry[0])
@@ -149,12 +155,12 @@ lao_consonant_assignments = {
     'ສ': [['s', None], ['s', None]], 
     'ຊ': [['s', None], ['x', None]], 
     'ຕ': [['t', None], ['t', None]], 
-    'ຖ': [['tʰ', None], ['th', None]], 
+    'ຖ': [['tʰ', 't'], ['th', None]], 
     'ທ': [['tʰ', None], ['th', None]], 
     'ຈ': [['tɕ', None], ['ch', None]], 
-    'ວ': [['ʋ', None], ['v', 'o']], 
+    'ວ': [['ʋ', 'w'], ['v', 'o']], 
     'ຫວ': [['ʋ', None], ['v', None]], 
-    'ອ': [['ʔ', None], ['', None]], 
+    'ອ': [['', None], ['', None]], 
     'ຼ': [['l', None], ['l', None]], 
     'ຄຣ': [['kʰr', None], ['khr', None]], 
     'ຄລ': [['kʰl', None], ['khl', None]], 
@@ -169,15 +175,15 @@ lao_consonant_assignments = {
     'ພລ': [['pʰl', None], ['phl', None]], 
     'ພຼ': [['pʰl', None], ['phl', None]], 
     'ຂວ': [ ['kʰʋ', None], ['khv', None]], 
-    'ກວ': [['kʋ', None], ['kv', None]], 
+    'ກວ': [['kʷ', None], ['kv', None]],
     'ກຣ': [['kr', None], ['kr', None]], 
-    'ກຮ': [['kr', None], ['kr', None]], 
+    # 'ກຮ': [['kr', None], ['kr', None]], 
     'ກຼ': [['kl', None], ['kl', None]], 
     'ຄຼ': [['kʰl', None], ['khl', None]], 
     'ປຼ': [['pl', None], ['pl', None]], 
     'ປຣ': [['pr', None], ['pr', None]], 
     'ບຣ': [['br', None], ['br', None]], 
-    'ບລ': [['bl', None], ['bl', None]], 
+    # 'ບລ': [['bl', None], ['bl', None]], 
     'ບຼ': [['bl', None], ['bl', None]], 
     'ດຼ': [['dr', None], ['dl', None]], 
     'ດຣ': [['dr', None], ['dr', None]], 
@@ -216,8 +222,8 @@ lao_vowel_assignments = {
     "ູ": ["uː","ou"],
     "ື": ["ɯː","u"], # ue?
     "ເີ": ["ɤː","eu"],
-    "ເຍ": ["ia","ia"],
-    "ຽ": ["ia", "ia"],
+    "ເຍ": ["iːə","ia"],
+    "ຽ": ["iːə", "ia"],
     "ົວ": ["uːə","oua"],
     "ົວະ": ["uə","oua"],
     "ວ": ["uːə","oua"],
@@ -226,7 +232,7 @@ lao_vowel_assignments = {
     "ໃ": ["aj","ai"],
     "ໄ": ["aj","ai"],
     "ເົາ": ["aw","ao"],
-   "ວາ": ["uːə","oua"],
+#    "ວາ": ["uːə","oua"],
     "ເັຽ": ["iːə", "ia"],
     "ຳ": ["am", "am"],
 }
@@ -242,7 +248,7 @@ lao_intermediate_vowel_states = {
     "ເຶ",
     "ເົ",
     "ເັ",
-    "ວ", # Remove if wa is removed
+    # 'ວ' intentionally omitted to avoid global merging of 'ວ'+vowel
     "ເື",
 }
 
@@ -315,7 +321,7 @@ def merge_double_consonants(lao_source_array: list):
     # list of consonants that can have consonant pairs
     lao_start_consonant_pairs = {"ຫ","ດ","ບ","ປ","ຕ","ທ","ກ","ຂ","ພ","ຝ","ຟ","ຄ","ຖ"}
     # list of Lao consonant pairs
-    lao_consonant_pairs = {"ຫມ","ກຮ","ຝຮ","ທຣ","ຖວ","ດຣ","ພລ","ຕຼ","ຄລ","ຕຣ","ບລ","ຝຼ","ທຼ","ດຼ","ກຼ","ຟຼ","ພຼ","ບຼ","ກຣ","ປຣ","ບຣ","ປຼ","ຄຼ","ຫລ","ກວ","ຂວ","ພຣ","ຝຣ","ຟຣ","ຄວ","ຄຣ","ຫວ","ຫຣ","ຫຍ","ຫງ","ຫນ","ຫຼ"}
+    lao_consonant_pairs = {"ຫມ","ຝຮ","ທຣ","ຖວ","ດຣ","ພລ","ຕຼ","ຄລ","ຕຣ","ບລ","ຝຼ","ທຼ","ດຼ","ກຼ","ຟຼ","ພຼ","ບຼ","ກຣ","ປຣ","ບຣ","ປຼ","ຄຼ","ຫລ","ກວ","ຂວ","ພຣ","ຝຣ","ຟຣ","ຄວ","ຄຣ","ຫວ","ຫຣ","ຫຍ","ຫງ","ຫນ","ຫຼ"} # Removed gh
     position = 0
     result_array = []
     while position < len(lao_source_array):
