@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lao2ipa"
+version = "0.0.1"
+authors = [
+  { name="Christian Richardson", email="richachr@byu.edu" },
+]
+description = "A package to transliterate Lao characters into a number of romanization systems, such as IPA and MoH2020"
+readme = "README.md"
+requires-python = ">=3.6"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+keywords = ["lao","transliterate","transliteration","ipa","lao2ipa","converter"]
+
+[project.urls]
+Homepage = "https://github.com/byu-matrix-lab/lao2ipa"
+Issues = "https://github.com/byu-matrix-lab/lao2ipa/issues"
