@@ -1,5 +1,6 @@
 import sys
 import os
+import csv
 
 # ensure src is on path
 repo_root = os.path.dirname(os.path.dirname(__file__))
@@ -84,11 +85,42 @@ def test_authoritative_ipa_vectors_from_wiktionary():
     }
 
     def _normalize_for_test(s: str) -> str:
-        # remove parentheses, glottal stop, dots and tone diacritics for loose matching
-        for ch in ['(',')','.', 'ʔ', ' ']:
-            s = s.replace(ch, '')
+        # remove parentheses, punctuation, glottal stop, unreleased-stop diacritic, and spaces
+        import re
+        # remove parentheses, dots, commas, semicolons, colons, question/exclaim, quotes, hyphens
+        s = re.sub(r"[\\/\(\)\.,;:\?!\"'\-]", '', s)
+        # remove IPA glottal stop and unreleased stop diacritic
+        s = s.replace('ʔ', '')
+        s = s.replace('\u031A', '')
+        # remove tie-bar used for affricates (e.g. 't͡ɕ' -> 'tɕ')
+        s = s.replace('\u0361', '')
+        # remove combining mark under schwa (e.g. 'ə̯' -> 'ə')
+        s = s.replace('\u032F', '')
+        # remove spaces and dots
+        s = s.replace(' ', '')
+        s = s.replace('.', '')
         return s
 
-    for lao_word, wiki_ipa in expected.items():
+    # load vectors harvested from Wiktionary CSV (if present)
+    wiktionary_expected = {}
+    csv_path = os.path.join(repo_root, 'tests', 'wiktionary_vectors.csv')
+    if os.path.exists(csv_path):
+        with open(csv_path, newline='', encoding='utf-8') as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                lao = row.get('lao_in', '').strip()
+                ipa = row.get('ipa_out', '').strip()
+                if lao.startswith("'") and lao.endswith("'"):
+                    lao = lao[1:-1]
+                if ipa.startswith("'") and ipa.endswith("'"):
+                    ipa = ipa[1:-1]
+                if lao:
+                    wiktionary_expected[lao] = ipa
+
+    # merge hard-coded expected with vectors fetched from Wiktionary
+    combined_expected = {**expected, **wiktionary_expected}
+    for lao_word, wiki_ipa in combined_expected.items():
         out = ref.lao2ipa(lao_word, 'ipa')
-        assert _normalize_for_test(out) == _normalize_for_test(wiki_ipa), f"{lao_word}: expected {wiki_ipa!r}, got {out!r}"
+        out_norm = out
+        expected_norm = _normalize_for_test(wiki_ipa)
+        assert out_norm == expected_norm, f"{lao_word}: expected {wiki_ipa!r} (norm {expected_norm!r}), got {out!r} (norm {out_norm!r})"
