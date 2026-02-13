@@ -2,9 +2,15 @@
 requires = ["setuptools >= 77.0.3"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+py-modules = ["lao2ipa"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
 [project]
 name = "lao2ipa"
-version = "0.0.1"
+version = "1.0.0"
 authors = [
   { name="Christian Richardson", email="richachr@byu.edu" },
 ]

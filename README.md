@@ -21,13 +21,13 @@ pip install -e .
 Basic usage (Python):
 
 ```python
-from transliterate.lao_to_ipa_ref import lao2ipa
+from lao2ipa import transliterate
 
-print(lao2ipa('ສະບາຍດີ'))  # example output: IPA transliteration
+print(transliterate('ສະບາຍດີ'))  # example output: IPA transliteration
 ```
 
 Function signature:
-- `lao2ipa(lao_source: str, output: str = 'ipa', ignore_tones: bool = False, remove_karan_phonemes: bool = False)`
+- `transliterate(lao_source: str, output: str = 'ipa', ignore_tones: bool = False, remove_karan_phonemes: bool = False)`
 
 Output keys (valid `output` values):
 - `ipa` — Unicode IPA transliteration (default)
@@ -36,7 +36,7 @@ Output keys (valid `output` values):
 ## Development
 
 - Run tests with `pytest -q`.
-- Code lives in `src/transliterate/lao_to_ipa_ref.py`.
+- Code lives in `src/lao2ipa.py`.
 
 ## Contributing
 

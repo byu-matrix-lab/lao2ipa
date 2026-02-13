@@ -7,7 +7,7 @@ tables. It is intentionally conservative (no external models) and
 follows conventions used in language reference materials with Vientiane tones.
 
 Public functions:
- - `lao2ipa`: top-level pipeline for transliteration
+ - `transliterate`: top-level pipeline for transliteration
 
 Classes:
  - `Syllable`: represents an assembled Lao syllable (vowel, initials, finals, tone)
@@ -16,7 +16,7 @@ The implementation relies on several tables: `lao_consonant_assignments`,
 `lao_vowel_assignments`, and helper sets for vowel/tone characters.
 """
 
-# TODO: Type annotations, handle Lao abbreviations, better comments for swap tone markers, fix file structure
+# TODO: Type annotations, handle Lao abbreviations, better comments for swap tone markers
 
 
 class Syllable:
@@ -153,7 +153,7 @@ class Syllable:
         `lao_vowel_assignments`. For initial/final consonants we prefer
         the explicit initial-form mapping so a single-element context does
         not accidentally use the final-form. If a token is not present in
-        the lookup tables we fall back to calling `transliterate()` on the
+        the lookup tables we fall back to calling `get_naive_transliteration()` on the
         token, allowing recursive handling of composed strings.
 
         Args:
@@ -165,7 +165,7 @@ class Syllable:
         """
         transliterated_list = []
         # Prefer explicit initial-form mapping for initial consonants so we don't
-        # accidentally select final-form mapping when transliterate() is called
+        # accidentally select final-form mapping when get_naive_transliteration() is called
         # with a single-element context.
         if self.initial_consonant is not None:
             # If the initial cluster ends with the semivowel 'ວ' and the
@@ -178,17 +178,17 @@ class Syllable:
                 transliterated_list.append(initial_cons_entry[0])
             except KeyError:
                 transliterated_list.extend(
-                    transliterate([self.initial_consonant], system)
+                    get_naive_transliteration([self.initial_consonant], system)
                 )
 
         # Vowel handling: when using direct table lookup append the string,
-        # otherwise extend the transliterate() result (a list).
+        # otherwise extend the get_naive_transliteration() result (a list).
         if self.vowel is not None:
             try:
                 vowel_entry = lao_vowel_assignments[self.vowel][outputs[system]]
                 transliterated_list.append(vowel_entry)
             except KeyError:
-                transliterated_list.extend(transliterate([self.vowel], system))
+                transliterated_list.extend(get_naive_transliteration([self.vowel], system))
 
         if self.final_consonant is not None:
             try:
@@ -196,7 +196,7 @@ class Syllable:
                 # Prefer final-form mapping where available; otherwise use initial-form.
                 transliterated_list.append(final_cons_entry[1] if final_cons_entry[1] is not None else final_cons_entry[0])
             except KeyError:
-                transliterated_list.extend(transliterate([self.final_consonant], system))
+                transliterated_list.extend(get_naive_transliteration([self.final_consonant], system))
         transliterated_list.append(self.get_tone())
         return "".join(transliterated_list)
 
@@ -399,7 +399,7 @@ lao_characters = set.union(
 )
 
 
-def lao2ipa(
+def transliterate(
     lao_source: str,
     output: str = "ipa",
     ignore_tones: bool = False,
@@ -424,7 +424,7 @@ def lao2ipa(
         str: Transliterated string.
 
     Example:
-        >>> lao2ipa('ສະບາຍດີ')
+        >>> transliterate('ສະບາຍດີ')
     """
     if lao_source == "":
         return ""
@@ -455,7 +455,7 @@ def lao2ipa(
     # Iterate through string and replace valid syllables with ipa
     # Rule-based convert remaining characters
     # Process special characters
-    transliterated_array = transliterate(lao_array, output)
+    transliterated_array = get_naive_transliteration(lao_array, output)
     return "".join(transliterated_array)
 
 
@@ -704,13 +704,13 @@ def merge_vowels(lao_array: list):
             if (
                 position + 1 < len(lao_array)
                 and compound_vowel + lao_array[position + 1] in lao_vowel_assignments
-            ):
-                if not (
+                and not (
                     lao_array[position + 1] == "ຍ"
                     and is_beginning_consonant(lao_array[position + 1:])
-                ):
-                    compound_vowel += lao_array[position + 1]
-                    position += 1
+                )
+            ):
+                compound_vowel += lao_array[position + 1]
+                position += 1
             result_array.append(compound_vowel)
         else:
             result_array.append(lao_array[position])
@@ -867,7 +867,7 @@ def transliterate_syllables(lao_array, output):
     return result_array
 
 
-def transliterate(lao_array: list, output: str = "ipa"):
+def get_naive_transliteration(lao_array: list, output: str = "ipa"):
     """Rule-based transliteration for token lists using assignment tables.
 
     Args:
@@ -1079,4 +1079,4 @@ if __name__ == "__main__":
     user_input = ""
     while user_input != "quit":
         user_input = input("Phrase: ").replace("\u200b", "")
-        print(lao2ipa(user_input, "ipa", False))
+        print(transliterate(user_input, "ipa", False))
