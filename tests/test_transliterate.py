@@ -6,58 +6,58 @@ import csv
 repo_root = os.path.dirname(os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(repo_root, 'src'))
 
-from transliterate import lao_to_ipa_ref as ref
+from lao2ipa import transliterate, remove_karan
 
 
 def test_basic_consonant_mapping():
-    out = ref.lao2ipa('ກ', 'ipa')
+    out = transliterate('ກ', 'ipa')
     assert out != ''
     assert out.startswith('k')
 
 
 def test_long_vowel_includes_vowel_symbol_and_tone():
-    out = ref.lao2ipa('ກາ', 'ipa')
+    out = transliterate('ກາ', 'ipa')
     assert 'aː' in out
     assert any(t in out for t in ['˦', '˥', '˨', '˧', '˩'])
 
 
 def test_repeater_duplicates_previous_syllable():
-    a = ref.lao2ipa('ກາໆ', 'ipa')
-    b = ref.lao2ipa('ກາກາ', 'ipa')
+    a = transliterate('ກາໆ', 'ipa')
+    b = transliterate('ກາກາ', 'ipa')
     assert a == b
 
 
 def test_remove_karan_removes_previous_consonant_when_flag_true():
     arr = ['ກ','໌','າ']
-    assert ref.remove_karan(arr, remove_karan_phonemes=True) == ['າ']
-    assert ref.remove_karan(arr, remove_karan_phonemes=False) == ['ກ','າ']
+    assert remove_karan(arr, remove_karan_phonemes=True) == ['າ']
+    assert remove_karan(arr, remove_karan_phonemes=False) == ['ກ','າ']
 
 
 def test_preposed_vowel_swap_equivalence():
     # preposed vowel should be re-ordered so transliteration equals the reordered form
-    assert ref.lao2ipa('ເກ', 'ipa') == ref.lao2ipa('ກເ', 'ipa')
+    assert transliterate('ເກ', 'ipa') == transliterate('ກເ', 'ipa')
 
 
 def test_merge_double_consonant_digraph_equivalence():
     # digraph ຫມ should behave like ມ for initial mapping
-    assert ref.lao2ipa('ຫມາ', 'ipa') == ref.lao2ipa('ໝາ', 'ipa')
+    assert transliterate('ຫມາ', 'ipa') == transliterate('ໝາ', 'ipa')
 
 
 def test_moh_vs_ipa_different_outputs():
-    ipa = ref.lao2ipa('ກາ', 'ipa')
-    moh = ref.lao2ipa('ກາ', 'moh')
+    ipa = transliterate('ກາ', 'ipa')
+    moh = transliterate('ກາ', 'moh')
     assert ipa != moh
 
 
 def test_numerals_and_abbreviation_handling():
     # abbreviation sign 'ຯ' should be removed; Lao numerals converted to ASCII
-    out = ref.lao2ipa('ສະບາຍດີຯ໑', 'ipa')
+    out = transliterate('ສະບາຍດີຯ໑', 'ipa')
     assert '1' in out
     assert 'ຯ' not in out
 
 
 def test_multi_syllable_phrase_returns_string():
-    out = ref.lao2ipa('ສະບາຍດີ', 'ipa')
+    out = transliterate('ສະບາຍດີ', 'ipa')
     assert isinstance(out, str)
     assert len(out) > 0
 
@@ -119,8 +119,16 @@ def test_authoritative_ipa_vectors_from_wiktionary():
 
     # merge hard-coded expected with vectors fetched from Wiktionary
     combined_expected = {**expected, **wiktionary_expected}
+    mismatches = []
     for lao_word, wiki_ipa in combined_expected.items():
-        out = ref.lao2ipa(lao_word, 'ipa')
+        out = transliterate(lao_word, 'ipa')
         out_norm = out
         expected_norm = _normalize_for_test(wiki_ipa)
-        assert out_norm == expected_norm, f"{lao_word}: expected {wiki_ipa!r} (norm {expected_norm!r}), got {out!r} (norm {out_norm!r})"
+        if out_norm != expected_norm:
+            mismatches.append((lao_word, wiki_ipa, out, expected_norm, out_norm))
+
+    if mismatches:
+        details = []
+        for w, exp, got, exp_norm, got_norm in mismatches:
+            details.append(f"{w}: expected {exp!r} (norm {exp_norm!r}), got {got!r} (norm {got_norm!r})")
+        assert False, f"Mismatches: {len(mismatches)}\n" + "\n".join(details)
