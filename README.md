@@ -1,5 +1,7 @@
 # lao2ipa
 
+[![Tests](https://github.com/byu-matrix-lab/lao2ipa/actions/workflows/tests.yml/badge.svg)](https://github.com/byu-matrix-lab/lao2ipa/actions/workflows/tests.yml)
+
 Lightweight rule-based Lao → IPA transliteration utilities.
 
 This package tokenizes Lao text into orthographic units, groups characters into syllables, applies tone-placement heuristics, and renders IPA transliterations (with optional alternate outputs).
@@ -35,8 +37,24 @@ Output keys (valid `output` values):
 
 ## Development
 
-- Run tests with `pytest -q`.
-- Code lives in `src/lao2ipa.py`.
+Requires Python >=3.10.
+
+Install development dependencies and run the test suite:
+
+```bash
+python -m pip install -e ".[dev]"
+python -m pytest -q
+```
+
+CI runs the same tests on Python 3.10–3.14 via
+`.github/workflows/tests.yml`.
+
+### Test data
+
+`tests/wiktionary_vectors.csv` contains Lao/IPA pairs with the columns
+`lao_in`, `ipa_out`, and `note`. Rows with a non-empty `note` are known
+exceptions (Wiktionary quirks, obsolete spellings, etc.) and are ignored by
+the authoritative-vector test.
 
 ## Contributing
 

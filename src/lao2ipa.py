@@ -16,7 +16,47 @@ The implementation relies on several tables: `lao_consonant_assignments`,
 `lao_vowel_assignments`, and helper sets for vowel/tone characters.
 """
 
-# TODO: Type annotations, handle Lao abbreviations, better comments for swap tone markers
+# TODO: Type annotations, handle Lao abbreviations
+
+
+# Final consonants that make a syllable checked/dead for tone assignment.
+lao_dead_finals = {"ກ", "ຂ", "ຄ", "ດ", "ຕ", "ຖ", "ທ", "ບ", "ປ", "ພ", "ຟ", "ຝ"}
+# Consonants that can close a Lao syllable.
+lao_final_consonants = lao_dead_finals | {
+    "ງ", "ຈ", "ຊ", "ຍ", "ສ", "ມ", "ນ", "ຣ", "ລ", "ວ"
+}
+# Maximum number of tokens to scan when placing a tone marker.
+lao_tone_lookahead_limit = 7
+
+
+class _LaoToken(str):
+    """String token that remembers the source range it came from.
+
+    The pipeline merges and reorders characters while assembling syllables.
+    Carrying the original start/end offsets lets us map a finished
+    `Syllable` back to the exact substring it represents.
+    """
+
+    def __new__(cls, value, start=0, end=None):
+        obj = super().__new__(cls, value)
+        obj.start = start
+        obj.end = start + len(value) if end is None else end
+        return obj
+
+    def __add__(self, other):
+        if isinstance(other, _LaoToken):
+            return _LaoToken(str(self) + str(other), self.start, other.end)
+        return _LaoToken(str(self) + str(other), self.start, self.end + len(other))
+
+    def __radd__(self, other):
+        return _LaoToken(str(other) + str(self), self.start, self.end)
+
+
+def _replace_span(value, first, second):
+    """Build a merged token spanning two source tokens when both are tracked."""
+    if isinstance(first, _LaoToken) and isinstance(second, _LaoToken):
+        return _LaoToken(value, first.start, second.end)
+    return value
 
 
 class Syllable:
@@ -40,7 +80,7 @@ class Syllable:
     # Vowel tokens that should be treated as "live" (exception to the
     # short->dead syllable rule). These tokens are short-form glyphs
     # orthographically but do not trigger checked/dead-tone behavior.
-    LAO_SPECIAL_VOWELS = {"ຳ", "ເົາ", "ໃ", "ໄ"}
+    LAO_SPECIAL_VOWELS = {"ຳ", "ເົາ", "ໃ", "ໄ", "ເັຽ", "ເັຍ"}
 
     def __init__(
         self, vowel, initial_consonant=None, final_consonant=None, tone_marker=None
@@ -63,7 +103,7 @@ class Syllable:
         self.letter_class = None
         self.vowel_length = Syllable.get_vowel_length(vowel)
         # Treat certain special vowels (am/ao/ai) as live for tone purposes
-        self.dead_syllable = self.final_consonant in {"ກ", "ດ", "ບ"} or (
+        self.dead_syllable = self.final_consonant in lao_dead_finals or (
             self.final_consonant is None
             and self.vowel_length == "short"
             and vowel not in Syllable.LAO_SPECIAL_VOWELS
@@ -98,7 +138,7 @@ class Syllable:
         first_letter = self.initial_consonant[0] if self.initial_consonant is not None else None
         self.letter_class = Syllable.get_letter_class(first_letter)
         # Recompute dead_syllable taking into account special vowels as live
-        self.dead_syllable = self.final_consonant in {"ກ", "ດ", "ບ"} or (
+        self.dead_syllable = self.final_consonant in lao_dead_finals or (
             self.final_consonant is None
             and self.vowel_length == "short"
             and self.vowel not in Syllable.LAO_SPECIAL_VOWELS
@@ -231,7 +271,7 @@ class Syllable:
         """
         if vowel in {"ະ", "ັ", "ເະ", "ເັ", "ແະ", "ແັ", "ິ", "ໂະ", "ົ", "ເາະ", "ັອ", "ຸ", "ຶ", "ເິ", "ົວະ", "ເຶອ", "ໃ", "ໄ", "ເົາ", "ເັຽ", "ເັຍ", "ຳ"}:
             return "short"
-        elif vowel in {"າ", "ເ", "ແ", "ີ", "ໂ", "ໍ", "ອ", "ູ", "ື", "ເີ", "ເຍ", "ຽ", "ົວ", "ວ", "ເືອ"}:
+        elif vowel in {"າ", "ເ", "ແ", "ີ", "ໂ", "ໍ", "ອ", "ູ", "ື", "ເີ", "ເຍ", "ຽ", "ົວ", "ວ", "ວາ", "ເືອ"}:
             return "long"
         else:
             return None
@@ -251,7 +291,7 @@ lao_consonant_assignments = {
     "ກ": [["k", None], ["k", None]],
     "ຂ": [["kʰ", None], ["kh", None]],
     "ຄ": [["kʰ", None], ["kh", None]],
-    "ລ": [["l", None], ["l", None]],
+    "ລ": [["l", "n"], ["l", None]],
     "ຫຼ": [["l", None], ["l", None]],
     "ຫລ": [["l", None], ["l", None]],
     "ມ": [["m", None], ["m", None]],
@@ -267,8 +307,8 @@ lao_consonant_assignments = {
     "ປ": [["p", None], ["p", None]],
     "ຜ": [["pʰ", None], ["ph", None]],
     "ພ": [["pʰ", None], ["ph", None]],
-    "ຣ": [["r", "n"], ["r", None]],
-    "ຫຣ": [["r", None], ["r", None]],
+    "ຣ": [["l", "n"], ["r", None]],
+    "ຫຣ": [["l", None], ["r", None]],
     "ສ": [["s", None], ["s", None]],
     "ຊ": [["s", None], ["x", None]],
     "ຕ": [["t", None], ["t", None]],
@@ -279,35 +319,48 @@ lao_consonant_assignments = {
     "ຫວ": [["ʋ", None], ["v", None]],
     "ອ": [["", None], ["", None]],
     "ຼ": [["l", None], ["l", None]],
-    "ຄຣ": [["kʰr", None], ["khr", None]],
+    "ຄຣ": [["kʰl", None], ["khr", None]],
     "ຄລ": [["kʰl", None], ["khl", None]],
-    "ຄວ": [["kʰʋ", None], ["khv", None]],
+    "ຄວ": [["kʷʰ", None], ["khv", None]],
     "ຖວ": [["taʋ", None], ["thv", None]],
-    "ຟຣ": [["fr", None], ["fr", None]],
+    "ຟຣ": [["fl", None], ["fr", None]],
     "ຟຼ": [["fl", None], ["fl", None]],
-    "ຝຣ": [["far", None], ["fr", None]],
-    "ຝຮ": [["far", None], ["fr", None]],
+    "ຝຣ": [["fal", None], ["fr", None]],
+    "ຝຮ": [["fal", None], ["fr", None]],
     "ຝຼ": [["fal", None], ["fl", None]],
-    "ພຣ": [["pʰr", None], ["phr", None]],
+    "ພຣ": [["pʰl", None], ["phr", None]],
     "ພລ": [["pʰl", None], ["phl", None]],
     "ພຼ": [["pʰl", None], ["phl", None]],
-    "ຂວ": [["kʰʋ", None], ["khv", None]],
+    "ຂວ": [["kʷʰ", None], ["khv", None]],
     "ກວ": [["kʷ", None], ["kv", None]],
-    "ກຣ": [["kr", None], ["kr", None]],
+    "ກຣ": [["kl", None], ["kr", None]],
     # 'ກຮ': [['kr', None], ['kr', None]],
     "ກຼ": [["kl", None], ["kl", None]],
     "ຄຼ": [["kʰl", None], ["khl", None]],
     "ປຼ": [["pl", None], ["pl", None]],
-    "ປຣ": [["pr", None], ["pr", None]],
-    "ບຣ": [["br", None], ["br", None]],
+    "ປຣ": [["pl", None], ["pr", None]],
+    "ບຣ": [["bl", None], ["br", None]],
     # 'ບລ': [['bl', None], ['bl', None]],
     "ບຼ": [["bl", None], ["bl", None]],
-    "ດຼ": [["dr", None], ["dl", None]],
-    "ດຣ": [["dr", None], ["dr", None]],
-    "ທຼ": [["tr", None], ["tl", None]],
-    "ຕຣ": [["tr", None], ["tr", None]],
-    "ທຣ": [["tr", None], ["tr", None]],
-    "ຕຼ": [["tr", None], ["tl", None]],
+    "ດຼ": [["dl", None], ["dl", None]],
+    "ດຣ": [["dl", None], ["dr", None]],
+    "ທຼ": [["tl", None], ["tl", None]],
+    "ຕຣ": [["tl", None], ["tr", None]],
+    "ທຣ": [["tl", None], ["tr", None]],
+    "ຕຼ": [["tl", None], ["tl", None]],
+    "ບລ": [["bl", None], ["bl", None]],
+    "ສຣ": [["sl", None], ["sr", None]],
+    "ສລ": [["sl", None], ["sl", None]],
+    "ສວ": [["sʋ", None], ["sv", None]],
+    "ສຍ": [["sɲ", None], ["sny", None]],
+    "ຊຣ": [["sl", None], ["xr", None]],
+    "ຊລ": [["sl", None], ["xl", None]],
+    "ຊວ": [["sʋ", None], ["xv", None]],
+    "ຊຍ": [["sɲ", None], ["xny", None]],
+    "ຈຣ": [["tɕl", None], ["chr", None]],
+    "ຈລ": [["tɕl", None], ["chl", None]],
+    "ຈວ": [["tɕʷ", None], ["chv", None]],
+    "ຈຍ": [["tɕɲ", None], ["chny", None]],
     "ຳ": [["am", None], ["am", None]],
 }
 
@@ -344,6 +397,7 @@ lao_vowel_assignments = {
     "ົວ": ["uːə", "oua"],
     "ົວະ": ["uə", "oua"],
     "ວ": ["uːə", "oua"],
+    "ວາ": ["uːə", "oua"],
     "ເຶອ": ["ɯə", "ua"],
     "ເືອ": ["ɯːə", "ua"],
     "ໃ": ["aj", "ai"],
@@ -351,6 +405,7 @@ lao_vowel_assignments = {
     "ເົາ": ["aw", "ao"],
     #    "ວາ": ["uːə","oua"],
     "ເັຽ": ["iːə", "ia"],
+    "ເັຍ": ["iə", "ia"],
     "ຳ": ["am", "am"],
 }
 
@@ -390,6 +445,18 @@ lao_vowel_characters = {"ະ", "ັ", "າ", "ຳ", "ິ", "ີ", "ຶ", "ື", 
 lao_vowel_characters_pre = {"ເ", "ແ", "ໂ", "ໃ", "ໄ"}
 # list of Lao vowels that could come after the first consonant
 lao_vowel_characters_post = {"ະ", "ັ", "າ", "ຳ", "ິ", "ີ", "ຶ", "ື", "ຸ", "ູ", "ົ", "ຽ", "ໍ", "ວ", "ອ"}
+# consonants that can begin a multi-character onset cluster
+lao_start_consonant_pairs = {"ຫ", "ດ", "ບ", "ປ", "ຕ", "ທ", "ກ", "ຂ", "ພ", "ຝ", "ຟ", "ຄ", "ຖ", "ສ", "ຊ", "ຈ"}
+# recognized multi-character onset clusters
+lao_consonant_pairs = {"ຫມ", "ຝຮ", "ທຣ", "ຖວ", "ດຣ", "ພລ", "ຕຼ", "ຄລ", "ຕຣ", "ບລ", "ຝຼ", "ທຼ", "ດຼ", "ກຼ", "ຟຼ", "ພຼ", "ບຼ", "ກຣ", "ປຣ", "ບຣ", "ປຼ", "ຄຼ", "ຫລ", "ກວ", "ຂວ", "ພຣ", "ຝຣ", "ຟຣ", "ຄວ", "ຄຣ", "ຫວ", "ຫຣ", "ຫຍ", "ຫງ", "ຫນ", "ຫຼ", "ສຣ", "ສລ", "ສວ", "ສຍ", "ຊຣ", "ຊລ", "ຊວ", "ຊຍ", "ຈຣ", "ຈລ", "ຈວ", "ຈຍ"}
+# newer clusters whose first consonant may instead start its own syllable
+lao_loan_cluster_pairs = {"ສຣ", "ສລ", "ສວ", "ສຍ", "ຊຣ", "ຊລ", "ຊວ", "ຊຍ", "ຈຣ", "ຈລ", "ຈວ", "ຈຍ", "ຄລ"}
+# ວ-clusters that can be either labialized onsets or /uːə/ nuclei
+lao_labialized_clusters = {"ກວ", "ຂວ", "ຄວ", "ຈວ", "ສວ", "ຊວ"}
+# vowels that make a preceding ວ an onset glide instead of a nucleus
+lao_labializing_vowels = {"ັ", "ິ", "ີ", "ຶ", "ື", "ເ", "ແ", "ໂ", "ໍ", "ົ"}
+# vowels after which ຽ is a variant of final ຍ /j/
+lao_final_ya_vowels = {"າ", "ຳ", "ໍ", "ົ", "ໂ"}
 
 # create a set of all Lao characters used in words for searching
 lao_characters = set.union(
@@ -407,10 +474,9 @@ def transliterate(
 ):
     """Top-level pipeline: transliterate a Lao string into the requested output system.
 
-    The pipeline tokenizes the input, applies normalization steps (karan
-    removal, consonant merging, vowel reordering, tone marker swapping),
-    groups tokens into `Syllable` objects when appropriate, and finally
-    renders the sequence using lookup tables.
+    The input is first split into syllable-sized chunks, then each chunk is
+    transliterated independently. This keeps context-sensitive finals (such as
+    the vocalic/consonantal role of 'ວ') local to their syllable.
 
     Args:
         lao_source (str): Input Lao text.
@@ -428,17 +494,40 @@ def transliterate(
     """
     if lao_source == "":
         return ""
-    # Convert string to list
-    lao_array = list(lao_source)
+    if ignore_tones or remove_karan_phonemes:
+        # These modes change which characters act as syllable nuclei, so
+        # transliterate the whole string instead of splitting it first.
+        return _transliterate_core(
+            lao_source, output, ignore_tones, remove_karan_phonemes
+        )
+    chunks = _split_syllables_with_separators(lao_source)
+    return "".join(
+        _transliterate_core(chunk, output, ignore_tones, remove_karan_phonemes)
+        for chunk in chunks
+    )
+
+
+def _tokenize(
+    lao_source: str,
+    *,
+    ignore_tones: bool = False,
+    remove_karan_phonemes: bool = False,
+    track_spans: bool = False,
+):
+    """Run the shared token pipeline up to syllable assembly."""
+    if track_spans:
+        lao_array = [
+            _LaoToken(char, position, position + 1)
+            for position, char in enumerate(lao_source)
+        ]
+    else:
+        lao_array = list(lao_source)
     if ignore_tones:
-        # Remove tone markers
         lao_array = remove_tone_markers(lao_array)
-    # Remove silenced characters
     lao_array = remove_karan(lao_array, remove_karan_phonemes)
-    # Merge double consonants
     lao_array = merge_double_consonants(lao_array)
-    # Move pre vowels to post/update vowels set
     lao_array = swap_preorder_vowels(lao_array)
+    lao_array = normalize_wa_and_ya(lao_array)
     if not ignore_tones:
         lao_array = swap_tone_markers(lao_array)
     lao_array = merge_vowels(lao_array)
@@ -447,16 +536,28 @@ def transliterate(
         lao_array = absorb_initial_consonants_into_syllables(lao_array)
         lao_array = absorb_tones_into_syllables(lao_array)
         lao_array = absorb_final_consonants_into_syllables(lao_array)
-        # Handle repeater character logic while objects are grouped by Syllable.
-        # If Syllable objects are present, duplicate the previous Syllable when 'ໆ' appears.
-        # If no Syllable objects are present (non-syllable processing), simply remove 'ໆ' for now.
         lao_array = handle_repeater_on_syllables(lao_array)
+    return lao_array
+
+
+def _transliterate_core(
+    lao_source: str,
+    output: str = "ipa",
+    ignore_tones: bool = False,
+    remove_karan_phonemes: bool = False,
+):
+    """Run the token pipeline on one syllable or on the whole input string."""
+    if lao_source == "ສ":
+        # A lone ສ in archaic spellings is the syllable /sa/.
+        lao_source = "ສະ"
+    lao_array = _tokenize(
+        lao_source,
+        ignore_tones=ignore_tones,
+        remove_karan_phonemes=remove_karan_phonemes,
+    )
+    if not ignore_tones:
         lao_array = transliterate_syllables(lao_array, output)
-    # Iterate through string and replace valid syllables with ipa
-    # Rule-based convert remaining characters
-    # Process special characters
-    transliterated_array = get_naive_transliteration(lao_array, output)
-    return "".join(transliterated_array)
+    return "".join(get_naive_transliteration(lao_array, output))
 
 
 def remove_tone_markers(lao_array: list):
@@ -468,11 +569,65 @@ def remove_tone_markers(lao_array: list):
     Returns:
         List[str]: Filtered list without tone markers.
     """
-    result_array = []
-    for character in lao_array:
-        if character not in lao_tone_markers:
-            result_array.append(character)
-    return result_array
+    return [character for character in lao_array if character not in lao_tone_markers]
+
+
+def _skip_tone_markers(tokens: list, position: int) -> int:
+    """Return the index of the first token at or after `position` that is not a tone marker."""
+    while position < len(tokens) and tokens[position] in lao_tone_markers:
+        position += 1
+    return position
+
+
+def _is_initial_before_tone(tokens: list, position: int) -> bool:
+    """Return whether the token before a tone marker begins a syllable."""
+    previous = position - 1
+    return (
+        previous >= 0
+        and tokens[previous] in lao_consonant_assignments
+        and is_beginning_consonant(tokens[previous:])
+    )
+
+
+def _is_mergeable_pair(tokens: list, position: int) -> bool:
+    """Return whether two tokens at `position` form one onset cluster."""
+    if position + 1 >= len(tokens):
+        return False
+    first = tokens[position]
+    if first not in lao_start_consonant_pairs:
+        return False
+    second = tokens[position + 1]
+    pair = first + second
+    if second != "ຼ" and pair not in lao_consonant_pairs:
+        return False
+    if pair == "ບລ" and position > 0:
+        # ບ is usually the final of the previous syllable or the onset of a
+        # short-vowel syllable, not the first member of a /bl/ cluster.
+        return False
+    if pair == "ສຍ":
+        # ສຍ is a spelling variant of ສະຫຍ; ສ is its own syllable.
+        return False
+    if pair == "ປຣ" and position > 0 and tokens[position - 1] == "ເ":
+        # After the short vowel ເ, ປ is the onset of the next syllable
+        # (e.g. ໂອເປຣາ), not part of a /pr/ cluster.
+        return False
+    if pair[-1] == "ຣ":
+        previous = tokens[position - 1] if position else None
+        if previous in lao_vowel_characters_post:
+            # The first consonant closes the previous syllable, so the next
+            # ຣ-cluster starts a new syllable (e.g. ໂອຕຣິດ).
+            return False
+    if pair not in lao_loan_cluster_pairs:
+        return True
+    if position > 0 and tokens[position - 1] in lao_vowel_characters_pre:
+        return False
+    if pair[-1] not in {"ວ", "ຍ"}:
+        return True
+    next_position = _skip_tone_markers(tokens, position + 2)
+    return (
+        next_position < len(tokens)
+        and tokens[next_position] in lao_vowel_characters_post
+    )
 
 
 def merge_double_consonants(lao_source_array: list):
@@ -489,22 +644,10 @@ def merge_double_consonants(lao_source_array: list):
     Returns:
         List[str]: Sequence with valid digraphs merged.
     """
-    # list of consonants that can have consonant pairs
-    lao_start_consonant_pairs = {"ຫ", "ດ", "ບ", "ປ", "ຕ", "ທ", "ກ", "ຂ", "ພ", "ຝ", "ຟ", "ຄ", "ຖ"}
-    # list of Lao consonant pairs
-    lao_consonant_pairs = {"ຫມ", "ຝຮ", "ທຣ", "ຖວ", "ດຣ", "ພລ", "ຕຼ", "ຄລ", "ຕຣ", "ບລ", "ຝຼ", "ທຼ", "ດຼ", "ກຼ", "ຟຼ", "ພຼ", "ບຼ", "ກຣ", "ປຣ", "ບຣ", "ປຼ", "ຄຼ", "ຫລ", "ກວ", "ຂວ", "ພຣ", "ຝຣ", "ຟຣ", "ຄວ", "ຄຣ", "ຫວ", "ຫຣ", "ຫຍ", "ຫງ", "ຫນ", "ຫຼ"}  # Removed gh
-    position = 0
     result_array = []
+    position = 0
     while position < len(lao_source_array):
-        if (
-            lao_source_array[position] in lao_start_consonant_pairs
-            and position + 1 < len(lao_source_array)
-            and (
-                lao_source_array[position] + lao_source_array[position + 1]
-                in lao_consonant_pairs
-                or lao_source_array[position + 1] == "ຼ"
-            )
-        ):
+        if _is_mergeable_pair(lao_source_array, position):
             result_array.append(
                 lao_source_array[position] + lao_source_array[position + 1]
             )
@@ -546,13 +689,84 @@ def swap_preorder_vowels(lao_array: list):
     return result_array
 
 
+def _resolve_tone_marker(tokens: list, position: int, previous):
+    """Return the tokens emitted for a tone marker and the next scan position."""
+    tone = tokens[position]
+    vowel_position = _skip_tone_markers(tokens, position + 1)
+    if (
+        _is_initial_before_tone(tokens, position)
+        and vowel_position < len(tokens)
+        and tokens[vowel_position] in lao_vowel_characters
+    ):
+        return [tokens[vowel_position], tone], vowel_position + 1
+
+    skipped = []
+    test_position = position + 1
+    position_diff = 0
+    while position_diff < lao_tone_lookahead_limit and test_position < len(tokens):
+        test_token = tokens[test_position]
+        if test_token not in lao_vowel_characters:
+            # A consonant starts a new syllable, so keep the tone before it.
+            return skipped + [tone], position + position_diff + 1
+        if test_token not in {"ອ", "ວ", "ຍ"}:
+            # Keep scanning across ordinary vowels.
+            skipped.append(test_token)
+            previous = test_token
+            test_position += 1
+            position_diff += 1
+            continue
+        if (
+            previous == "ົ"
+            and test_token == "ວ"
+            and test_position + 1 < len(tokens)
+            and tokens[test_position + 1] == "ะ"
+        ):
+            # ົວະ is a compound vowel; the tone follows it.
+            return (
+                skipped + [test_token, tokens[test_position + 1], tone],
+                position + position_diff + 3,
+            )
+        if (
+            previous == "ເ"
+            and test_token == "ຍ"
+            and not is_beginning_consonant(tokens[test_position:])
+        ):
+            # ເຍ is a compound vowel; the tone follows it.
+            return skipped + [test_token, tone], position + position_diff + 2
+        if (
+            previous == "ັ"
+            and position >= 2
+            and tokens[position - 2] == "ເ"
+            and test_token == "ຍ"
+            and not is_beginning_consonant(tokens[test_position:])
+        ):
+            # ເ + ັ + tone + ຍ spells the short vowel ເັຍ.
+            return skipped + [test_token, tone], position + position_diff + 2
+        if previous in lao_vowel_characters and not is_beginning_consonant(
+            tokens[test_position:]
+        ):
+            # A glide after a vowel stays part of the vowel cluster.
+            if (
+                previous in {"ຶ", "ື"}
+                or previous + test_token in lao_vowel_assignments
+            ):
+                return skipped + [test_token, tone], position + position_diff + 2
+            return skipped + [tone], position + position_diff + 1
+        if is_beginning_consonant(tokens[test_position:]):
+            # The glide starts a new syllable; keep the tone before it.
+            return skipped + [tone], position + position_diff + 1
+        skipped.append(test_token)
+        previous = test_token
+        test_position += 1
+        position_diff += 1
+    return skipped + [tone], position + position_diff + 1
+
+
 def swap_tone_markers(lao_array: list):
     """Move tone markers to their canonical position relative to vowels/consonants.
 
-    This function applies several language-specific heuristics to place tone markers
-    so downstream syllable creation can attach them correctly. The algorithm
-    performs a lookahead (up to 7 positions) and handles multiple special cases
-    (e.g., interactions with 'ອ', 'ວ', 'ຍ', and certain vowel clusters).
+    The actual lookahead rules live in `_resolve_tone_marker`, which keeps this
+    pass a simple token loop.
 
     Args:
         lao_array (List[str]): Sequence of Lao characters/tokens.
@@ -560,86 +774,15 @@ def swap_tone_markers(lao_array: list):
     Returns:
         List[str]: Token list with tone markers repositioned.
     """
-    position = 0
     result_array = []
+    position = 0
     while position < len(lao_array):
         if lao_array[position] in lao_tone_markers:
-            test_position = position + 1
-            position_diff = 0
-            # Lookahead loop: try to find the token the tone should attach to.
-            # Limit the lookahead to protect against pathological input.
-            while position_diff < 7 and test_position < len(lao_array):
-                if lao_array[test_position] in lao_vowel_characters:
-                    # Special handling when the lookahead token is one of
-                    # 'ອ','ວ','ຍ' which may participate in vowel clusters.
-                    if lao_array[test_position] in {"ອ", "ວ", "ຍ"}:
-                        if (
-                            result_array != []
-                            and result_array[len(result_array) - 1] == "ົ"
-                            and lao_array[test_position] == "ວ"
-                            and test_position + 1 < len(lao_array)
-                            and lao_array[test_position + 1] == "ะ"
-                        ):
-                            result_array.append(lao_array[test_position])
-                            result_array.append(lao_array[test_position + 1])
-                            result_array.append(lao_array[position])
-                            position += position_diff + 3
-                            break
-                        elif (
-                            result_array != []
-                            and result_array[len(result_array) - 1] == "ເ"
-                            and lao_array[test_position] == "ຍ"
-                            and not (is_beginning_consonant(lao_array[test_position:]))
-                        ):
-                            result_array.append(lao_array[test_position])
-                            result_array.append(lao_array[position])
-                            position += position_diff + 2
-                            break
-                        elif (
-                            result_array != []
-                            and result_array[len(result_array) - 1]
-                            in lao_vowel_characters
-                            and not (is_beginning_consonant(lao_array[test_position:]))
-                        ):
-                            if (
-                                result_array[len(result_array) - 1] in {"ຶ", "ື"}
-                                or result_array[len(result_array) - 1]
-                                + lao_array[test_position]
-                                in lao_vowel_assignments.keys()
-                            ):
-                                result_array.append(lao_array[test_position])
-                                result_array.append(lao_array[position])
-                                position += position_diff + 2
-                                break
-                            else:
-                                result_array.append(lao_array[position])
-                                position += position_diff + 1
-                                break
-                        elif is_beginning_consonant(lao_array[test_position:]):
-                            # If the lookahead indicates a consonant sequence
-                            # beginning, keep the tone marker in-place.
-                            result_array.append(lao_array[position])
-                            position += position_diff + 1
-                            break
-                        else:
-                            # Continue scanning further into the sequence.
-                            result_array.append(lao_array[test_position])
-                            test_position += 1
-                            position_diff += 1
-                    else:
-                        # Continue scanning further into the sequence.
-                        result_array.append(lao_array[test_position])
-                        test_position += 1
-                        position_diff += 1
-                else:
-                    # Fall back: keep the tone marker where it is.
-                    result_array.append(lao_array[position])
-                    position += position_diff + 1
-                    break
-            if test_position >= len(lao_array):
-                # Reached end without finding a better attachment point; keep marker.
-                result_array.append(lao_array[position])
-                position += position_diff + 1
+            previous = result_array[-1] if result_array else None
+            emitted, position = _resolve_tone_marker(
+                lao_array, position, previous
+            )
+            result_array.extend(emitted)
         else:
             result_array.append(lao_array[position])
             position += 1
@@ -663,14 +806,18 @@ def merge_double_vowels(lao_array: list):
             and position + 1 < len(lao_array)
             and lao_array[position + 1] == "ເ"
         ):
-            result_array.append("ແ")
+            result_array.append(
+                _replace_span("ແ", lao_array[position], lao_array[position + 1])
+            )
             position += 2
         elif (
             lao_array[position] == "ໍ"
             and position + 1 < len(lao_array)
             and lao_array[position + 1] == "າ"
         ):
-            result_array.append("ຳ")
+            result_array.append(
+                _replace_span("ຳ", lao_array[position], lao_array[position + 1])
+            )
             position += 2
         else:
             result_array.append(lao_array[position])
@@ -718,6 +865,156 @@ def merge_vowels(lao_array: list):
     return result_array
 
 
+def _split_cluster(token):
+    """Split a two-character cluster token, preserving source spans."""
+    if isinstance(token, _LaoToken):
+        split_at = token.start + len(token[0])
+        return (
+            _LaoToken(token[0], token.start, split_at),
+            _LaoToken(token[1], split_at, token.end),
+        )
+    return token[0], token[1]
+
+
+def _should_split_wa_cluster(tokens: list, position: int) -> bool:
+    """Return whether the ວ-cluster at `position` is a nucleus, not an onset glide."""
+    next_position = _skip_tone_markers(tokens, position + 1)
+    next_char = tokens[next_position] if next_position < len(tokens) else None
+    if position > 0 and tokens[position - 1] in lao_vowel_characters_post:
+        return True
+    if next_char in lao_labializing_vowels:
+        return False
+    if next_char in {"ຽ", "ຍ"}:
+        after_ya = _skip_tone_markers(tokens, next_position + 1)
+        return (
+            after_ya >= len(tokens)
+            or tokens[after_ya] not in lao_consonant_assignments
+        )
+    return True
+
+
+def _reorder_wa_after_vowel(tokens: list, position: int):
+    """Recognize C + short vowel + ວ + final as a labialized onset.
+
+    The alternate spelling ຄັວນ is equivalent to ຄວັນ. The merged token is
+    given the full syllable span so the splitter keeps the syllable together.
+    """
+    if position + 3 >= len(tokens):
+        return None
+    consonant = tokens[position]
+    if consonant not in lao_consonant_assignments:
+        return None
+    if consonant in lao_labialized_clusters:
+        return None
+    vowel = tokens[position + 1]
+    if vowel not in lao_vowel_assignments:
+        return None
+    if Syllable.get_vowel_length(vowel) != "short":
+        return None
+    if vowel + "ວ" in lao_vowel_assignments:
+        return None
+    if tokens[position + 2] != "ວ":
+        return None
+    final = tokens[position + 3]
+    if final not in lao_final_consonants:
+        return None
+    cluster = consonant + "ວ"
+    if cluster not in lao_consonant_assignments:
+        return None
+    merged = _replace_span(cluster, consonant, final)
+    return [merged, vowel, final], position + 4
+
+
+def normalize_wa_and_ya(lao_array: list) -> list:
+    """Normalize ambiguous 'ວ' and 'ຽ' spellings before tone processing.
+
+    A 'ວ' cluster is an onset glide before a front/central vowel (e.g. ຄວັນ)
+    and a syllable nucleus otherwise (e.g. ຄວາມ, ສວນ, ຂວດ). 'ຽ' at the end
+    of a syllable after a complete vowel is a variant of final 'ຍ' /j/.
+    """
+    result_array = []
+    position = 0
+    while position < len(lao_array):
+        reordered = _reorder_wa_after_vowel(lao_array, position)
+        if reordered is not None:
+            emitted, position = reordered
+            result_array.extend(emitted)
+            continue
+        token = lao_array[position]
+        if token in lao_labialized_clusters and _should_split_wa_cluster(
+            lao_array, position
+        ):
+            previous = lao_array[position - 1] if position else None
+            next_position = _skip_tone_markers(lao_array, position + 1)
+            next_char = (
+                lao_array[next_position] if next_position < len(lao_array) else None
+            )
+            initial, wa_part = _split_cluster(token)
+            result_array.append(initial)
+            if next_char == "າ" and previous not in lao_vowel_characters_post:
+                result_array.append(
+                    _replace_span("ວາ", wa_part, lao_array[next_position])
+                )
+                result_array.extend(lao_array[position + 1 : next_position])
+                position = next_position + 1
+            else:
+                result_array.append(wa_part)
+                position += 1
+            continue
+        if token == "ຽ" and _is_final_ya_variant(lao_array, position):
+            result_array.append(_replace_span("ຍ", token, token))
+            position += 1
+            continue
+        result_array.append(token)
+        position += 1
+    return result_array
+
+
+def _is_final_ya_variant(lao_array: list, position: int) -> bool:
+    """Return True when 'ຽ' at `position` is a variant of final 'ຍ'."""
+    previous = lao_array[position - 1] if position else None
+    if previous in lao_final_ya_vowels:
+        return True
+    if previous != "ວ":
+        return False
+    before_wa = position - 2
+    if before_wa >= 0 and lao_array[before_wa] in lao_tone_markers:
+        before_wa -= 1
+    if before_wa < 0 or lao_array[before_wa] not in lao_consonant_assignments:
+        return False
+    # A consonant preceded by a vowel closes the previous syllable, so this
+    # 'ວ' is the onset of a new syllable (e.g. ວັງວຽງ, ຄາວຽກ).
+    before_consonant = before_wa - 1
+    return before_consonant < 0 or (
+        lao_array[before_consonant] not in lao_vowel_characters
+        and lao_array[before_consonant] not in lao_tone_markers
+    )
+
+
+def _acts_as_vowel(lao_array: list, index: int) -> bool:
+    """Return whether the token at `index` functions as a vowel in context."""
+    token = lao_array[index]
+    if token not in lao_vowel_assignments:
+        return False
+    if token in lao_consonant_assignments:
+        return not is_beginning_consonant(lao_array[index:])
+    return True
+
+
+def _has_vowel_before(lao_array: list, position: int) -> bool:
+    """Return whether a vowel precedes `position`, optionally across a tone marker."""
+    previous = position - 1
+    if previous < 0:
+        return False
+    if _acts_as_vowel(lao_array, previous):
+        return True
+    return (
+        lao_array[previous] in lao_tone_markers
+        and previous > 0
+        and _acts_as_vowel(lao_array, previous - 1)
+    )
+
+
 def create_syllables_on_vowels(lao_array):
     """Replace recognized vowel tokens with `Syllable` objects (initially vowel-only).
 
@@ -730,26 +1027,16 @@ def create_syllables_on_vowels(lao_array):
         List[Union[str, Syllable]]: Token sequence with `Syllable` objects inserted.
     """
     result_array = []
-    for i in range(len(lao_array)):
-        if lao_array[i] in lao_vowel_assignments.keys() and not (
-            is_beginning_consonant(lao_array[i:])
+    for i, token in enumerate(lao_array):
+        if token in lao_vowel_assignments and not is_beginning_consonant(
+            lao_array[i:]
         ):
-            if lao_array[i] in {"ວ", "ຍ"} and (
-                i - 1 >= 0
-                and (
-                    lao_array[i - 1] in lao_vowel_assignments
-                    or (
-                        lao_array[i - 1] in lao_tone_markers
-                        and i - 2 >= 0
-                        and lao_array[i - 2] in lao_vowel_assignments
-                    )
-                )
-            ):
-                result_array.append(lao_array[i])
+            if token in {"ວ", "ຍ"} and _has_vowel_before(lao_array, i):
+                result_array.append(token)
             else:
-                result_array.append(Syllable(vowel=lao_array[i]))
+                result_array.append(Syllable(vowel=token))
         else:
-            result_array.append(lao_array[i])
+            result_array.append(token)
     return result_array
 
 
@@ -1008,6 +1295,83 @@ def handle_repeater_on_syllables(lao_array: list, repeater_char: str = "ໆ"):
     return result
 
 
+def _source_span(item):
+    """Return the original character range covered by a pipeline item."""
+    if isinstance(item, Syllable):
+        components = [
+            component
+            for component in (
+                item.vowel,
+                item.initial_consonant,
+                item.final_consonant,
+                item.tone_marker,
+            )
+            if isinstance(component, _LaoToken)
+        ]
+        if not components:
+            return None
+        return (
+            min(component.start for component in components),
+            max(component.end for component in components),
+        )
+    if isinstance(item, _LaoToken):
+        return item.start, item.end
+    return None
+
+
+def _split_syllables_with_separators(lao_source: str):
+    """Split text into syllables while preserving whitespace and separators."""
+    lao_array = _tokenize(lao_source, track_spans=True)
+
+    chunks = []
+    cursor = 0
+    previous_span = None
+    for item in lao_array:
+        span = _source_span(item)
+        if span is None:
+            continue
+        start, end = span
+        if span == previous_span:
+            # Repeater expansion: emit the preceding syllable again.
+            chunks.append(lao_source[start:end])
+            continue
+        # Tone markers can be moved across a syllable boundary; clamp spans
+        # so chunks never overlap and every source character is used once.
+        start = max(start, cursor)
+        if end <= start:
+            continue
+        chunks.append(lao_source[start:end])
+        cursor = end
+        previous_span = span
+    return chunks
+
+
+def split_syllables(lao_source: str):
+    """Split Lao text into syllable-sized chunks.
+
+    Repeater marks ('ໆ') are expanded into a duplicate of the preceding
+    syllable. Whitespace is omitted, while punctuation and other separators
+    are kept as their own chunks.
+
+    Args:
+        lao_source (str): Input Lao text.
+
+    Returns:
+        List[str]: Syllable and separator chunks in reading order.
+
+    Example:
+        >>> split_syllables('ສຣີລັງກາ')
+        ['ສຣີ', 'ລັງ', 'ກາ']
+    """
+    if lao_source == "":
+        return []
+    return [
+        chunk
+        for chunk in _split_syllables_with_separators(lao_source)
+        if chunk.strip()
+    ]
+
+
 def remove_karan(array: list, remove_karan_phonemes: bool):
     """Remove karan (silencer) characters and optionally the consonant before them.
 
@@ -1050,8 +1414,11 @@ def is_beginning_consonant(lao_array):
     try:
         next_char = lao_array[1]
         if next_char in {"ວ", "ອ"}:
-            return lao_array[2] == "ຍ" or lao_array[2] not in lao_vowel_characters
-        elif next_char == "ຍ" or next_char not in lao_vowel_characters:
+            return (
+                lao_array[2] == "ຍ"
+                or lao_array[2] not in lao_vowel_assignments
+            )
+        elif next_char == "ຍ" or next_char not in lao_vowel_assignments:
             return False
         else:
             return True
