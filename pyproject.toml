@@ -16,7 +16,7 @@ authors = [
 ]
 description = "A package to transliterate Lao characters into a number of romanization systems, such as IPA and MoH2020"
 readme = "README.md"
-requires-python = ">=3.6"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -28,3 +28,10 @@ keywords = ["lao","transliterate","transliteration","ipa","lao2ipa","converter"]
 [project.urls]
 Homepage = "https://github.com/byu-matrix-lab/lao2ipa"
 Issues = "https://github.com/byu-matrix-lab/lao2ipa/issues"
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
